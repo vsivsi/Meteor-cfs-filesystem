@@ -39,11 +39,23 @@ FS.Store.FileSystem = function(name, options) {
 
   return new FS.StorageAdapter(name, options, {
     typeName: 'storage.filesystem',
+
+    getStream: function(fileObj, callback) {
+      var fileInfo = fileObj.getCopyInfo(name);
+      if (!fileInfo) { return callback(null, null); }
+      var fileKey = fileInfo.key;
+
+      // this is the Storage adapter scope
+      var filepath = path.join(absolutePath, fileKey);
+
+      // Call node createReadStream
+      callback(null, fs.createReadStream(filepath));
+    },
     get: function(fileObj, callback) {
       var fileInfo = fileObj.getCopyInfo(name);
       if (!fileInfo) { return callback(null, null); }
       var fileKey = fileInfo.key;
-      
+
       // this is the Storage adapter scope
       var filepath = path.join(absolutePath, fileKey);
 
@@ -54,7 +66,7 @@ FS.Store.FileSystem = function(name, options) {
       var fileInfo = fileObj.getCopyInfo(name);
       if (!fileInfo) { return callback(null, null); }
       var fileKey = fileInfo.key;
-      
+
       // this is the Storage adapter scope
       var filepath = path.join(absolutePath, fileKey);
 
@@ -81,12 +93,46 @@ FS.Store.FileSystem = function(name, options) {
         callback(new Error('FileSystemStore getBytes: Invalid start or stop values'));
       }
     },
+
+    putStream: function(fileObj, options, callback) {
+      options = options || {};
+
+      var fileKey = fileObj.collectionName + '-' + fileObj._id + '-' + fileObj.name;
+      var inputStream = fileObj.getStream();
+
+      // this is the Storage adapter scope
+      var filepath = path.join(absolutePath, fileKey);
+
+      if (!options.overwrite) {
+        // Change filename if necessary so that we can write to a new file
+        var extension = path.extname(fileKey);
+        var fn = fileKey.substr(0, fileKey.length - extension.length);
+        var suffix = 0;
+        while (fs.existsSync(filepath)) {
+          suffix++;
+          fileKey = fn + suffix + extension; //once we exit the loop, this is what will actually be used
+          filepath = path.join(absolutePath, fileKey);
+        }
+      }
+
+      outputStream = inputStream.pipe(fs.createWriteStream(filepath));
+
+      outputStream.on('finish', function () {
+        callback(null, newFileKey);
+      });
+
+      outputStream.on('error', function (err) {
+        return callback(err);
+      });
+
+    },
+
     put: function(fileObj, options, callback) {
       options = options || {};
-      
+
       var fileKey = fileObj.collectionName + '-' + fileObj._id + '-' + fileObj.name;
       var buffer = fileObj.getBuffer();
-      
+
       // this is the Storage adapter scope
       var filepath = path.join(absolutePath, fileKey);
 
@@ -115,14 +161,14 @@ FS.Store.FileSystem = function(name, options) {
       var fileInfo = fileObj.getCopyInfo(name);
       if (!fileInfo) { return callback(null, true); }
       var fileKey = fileInfo.key;
-      
+
       // this is the Storage adapter scope
       var filepath = path.join(absolutePath, fileKey);
 
       // Call node unlink file
       fs.unlink(filepath, callback);
     },
-    stats: function(fileKey, callback) {      
+    stats: function(fileKey, callback) {
       // this is the Storage adapter scope
       var filepath = path.join(absolutePath, fileKey);
 
